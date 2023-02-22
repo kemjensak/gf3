@@ -90,8 +90,10 @@ void MecanumControl::cmd_vel_callback(const geometry_msgs::msg::Twist &msg){
 
 void MecanumControl::can_reply_callback(const can_msgs::msg::Frame &msg)
 {
+  // Check if motor_reply_id is present in the msg array
   auto it = std::find(std::begin(motor_reply_id_), std::end(motor_reply_id_), msg.id);
   if (it != std::end(motor_reply_id_)) {
+      // Get the index of the item
       int index = std::distance(motor_reply_id_, it);
       std::cout << "Reply from Index: " << index << "found" << std::endl;
   } else {
@@ -99,15 +101,20 @@ void MecanumControl::can_reply_callback(const can_msgs::msg::Frame &msg)
 
     }
   // c4(196)-motor1, c9(201)-motor2 
-  if (msg.id == 0x701U){ // Right controller/ (2 * M_PI) * 60 * ratio
+  // Check if it's from Right controller
+  if (msg.id == 0x701U){
+    // Check if it's a Front Right motor
     if (msg.data[0] == 0xC4){ // FR
+      // Convert received raw rpm to angular velocity
       int16_t raw_rpm = ((msg.data[2] & 0xFF) +
                         ((msg.data[3] << 8) & 0xFF'00));
       received_FR_w_ = raw_rpm / 60 * (2* M_PI)  / ratio;
       is_FR_received_ = true;
       // RCLCPP_INFO(rclcpp::get_logger("MecanumControl"), "ID 1 - FR received: %f",received_FR_w_);
     }
+    // Check if it's a Rear Right motor
     if (msg.data[0] == 0xC9){ // RR
+      // Convert received raw rpm to angular velocity
       int16_t raw_rpm = ((msg.data[2] & 0xFF) +
                         ((msg.data[3] << 8) & 0xFF'00));
       received_RR_w_ = raw_rpm / 60 * (2* M_PI)  / ratio;
@@ -115,15 +122,20 @@ void MecanumControl::can_reply_callback(const can_msgs::msg::Frame &msg)
       // RCLCPP_INFO(rclcpp::get_logger("MecanumControl"), "ID 1 - RR received: %f",received_RR_w_);
     }
   }
-  else if(msg.id == 0x702U){ // Left controller
+  // Check if it's from Left controller
+  else if(msg.id == 0x702U){
+    // Check if it's a Front Left motor
     if (msg.data[0] == 0xC4){ // FL
+      // Convert received raw rpm to angular velocity
       int16_t raw_rpm = ((msg.data[2] & 0xFF) +
                         ((msg.data[3] << 8) & 0xFF'00));
       received_FL_w_ = raw_rpm / 60 * (2* M_PI)  / ratio;
       is_FL_received_ = true;
       // RCLCPP_INFO(rclcpp::get_logger("MecanumControl"), "ID 1 - FL received: %f",received_FR_w_);
     }
+    // Check if it's a Rear left motor
     if (msg.data[0] == 0xC9){ // RL
+      // Convert received raw rpm to angular velocity
       int16_t raw_rpm = ((msg.data[2] & 0xFF) +
                         ((msg.data[3] << 8) & 0xFF'00));
       received_RL_w_ = raw_rpm / 60 * (2* M_PI)  / ratio;
@@ -211,13 +223,18 @@ int MecanumControl::MainLoop()
 
 int main(int argc, char *argv[])
 {
+  // Initialize ROS2, set the loop rate to 100Hz and create a mecanumControl object
   rclcpp::init(argc, argv);
   rclcpp::Rate loop_rate(100);
   auto mecanum = std::make_shared<gf3_hardware::MecanumControl>();
+
+  // Keep running the main loop of mecanumControl until ROS 2 is shutdown
   while(rclcpp::ok()){
     mecanum->MainLoop();
     // loop_rate.sleep();
   }
+
+  // Shutdown ROS2 when the control loop is finished
   rclcpp::shutdown();
   return 0;
 }
