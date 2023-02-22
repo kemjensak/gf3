@@ -136,27 +136,37 @@ void MecanumControl::can_reply_callback(const can_msgs::msg::Frame &msg)
 
 int MecanumControl::MainLoop()
 {
+  // Publish the can command
   can_command_publisher_->publish(m1_command_);
   can_command_publisher_->publish(m2_command_);
+
+  // Spin some nodes to check for wheel velocity updates
   rclcpp::spin_some(shared_from_this());
+
+  // Check if wheel velocities are all received
   if (is_FL_received_ == true && is_FR_received_ == true &&is_RL_received_ == true &&is_RR_received_ == true){ // if All w are received
+    // Calculate linear and angular velocities from wheel velocities
     double vx = (received_FR_w_ + received_FL_w_ + received_RL_w_ + received_RR_w_) * WHEEL_RADIUS / 4 * ODOM_LINEAR_CALIBRAION_FACTOR;
     double vy = (received_FR_w_ - received_FL_w_ + received_RL_w_ - received_RR_w_) * WHEEL_RADIUS / 4 * ODOM_LINEAR_CALIBRAION_FACTOR;
     double vth = (received_FR_w_ - received_FL_w_ - received_RL_w_ + received_RR_w_) * WHEEL_RADIUS / (4 * (WHEEL_SEPARATION_WIDTH + WHEEL_SEPARATION_LENGTH)) * ODOM_ANGULAR_CALIBRAION_FACTOR;
     
+    // Calculate the current time, then calculate the interval (dt) since last reading
     double current_time = rclcpp::Clock(RCL_ROS_TIME).now().seconds();;
     double dt = current_time - prev_time_;
     prev_time_ = current_time;
     // RCLCPP_INFO(rclcpp::get_logger("MecanumControl"), "dt calculated: %f",dt);
+
+    // Calculate displacement in x, y & theta from linear & angular velocities respectively
     double delta_x = ((vx * cos(th_) - vy * sin(th_)) * dt);
     double delta_y = ((vx * sin(th_) + vy * cos(th_)) * dt);
     double delta_th = vth * dt;
 
+    // Update position
     x_ += delta_x;
     y_ += delta_y;
     th_ += delta_th;
 
-   
+    // Set up the odometry message with updated values
     odom_.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
     odom_.child_frame_id = "base_link";
     odom_.twist.twist.linear.x = vx;
@@ -173,32 +183,23 @@ int MecanumControl::MainLoop()
     odom_.pose.pose.orientation.z = q.z();
     odom_.pose.pose.orientation.w = q.w();
 
-
+    // Publish the odometry message
     odom_publisher_->publish(odom_);
    
-
+    // Create the transform message based on odometry message
     geometry_msgs::msg::TransformStamped t;
-
     t.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
     t.header.frame_id = "odom";
     t.child_frame_id = "base_link";
-
-    // Turtle only exists in 2D, thus we get x and y translation
-    // coordinates from the message and set the z coordinate to 0
     t.transform.translation.x = x_;
     t.transform.translation.y = y_;
     t.transform.translation.z = 0.0;
-
-    // For the same reason, turtle can only rotate around one axis
-    // and this why we set rotation in x and y to 0 and obtain
-    // rotation in z axis from the message
-    
     t.transform.rotation = odom_.pose.pose.orientation;
 
     // Send the transformation
     tf_broadcaster_->sendTransform(t);
 
-
+    // Reset the received flags
     is_FR_received_ = false;
     is_FL_received_ = false;
     is_RL_received_ = false;
