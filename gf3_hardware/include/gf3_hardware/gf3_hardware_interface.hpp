@@ -7,13 +7,18 @@
 #include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
+#include "rclcpp/node.hpp"
 #include "rclcpp/macros.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 #include "can_msgs/msg/frame.hpp"
-#include "gf3_hardware/CanBridge.hpp"
-#include "gf3_hardware/myactuator.hpp"
-#include "gf3_hardware/MoteusAPI.h"
+// #include "gf3_hardware/CanBridge.hpp"
+// #include "gf3_hardware/myactuator.hpp"
+// #include "gf3_hardware/MoteusAPI.h"
+
+#include <sensor_msgs/msg/joint_state.hpp>
+#include "moteus_msgs/msg/moteus_state_array.hpp"
+#include "moteus_msgs/msg/moteus_command_array.hpp"
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -50,13 +55,17 @@ namespace gf3_hardware
     hardware_interface::return_type write(const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
   private:
+    rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr topic_based_joint_states_subscriber_;
+    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr topic_based_joint_commands_publisher_;
+    rclcpp::Node::SharedPtr node_;
+    sensor_msgs::msg::JointState latest_joint_state_;
+
     double hw_start_sec_;
     double hw_stop_sec_;
     double hw_slowdown_;
     std::vector<double> hw_commands_;
     std::vector<double> hw_states_, prev_hw_states_;
     
-    std::shared_ptr<MoteusAPI> MOTEUS_;
     // std::shared_ptr<CanBridge> CAN_;
     // std::shared_ptr<Myactuator> ARM_;
 

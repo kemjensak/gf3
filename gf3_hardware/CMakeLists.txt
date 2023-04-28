@@ -20,6 +20,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   nav_msgs
   tf2
   tf2_ros
+  moteus_msgs
 )
 
 

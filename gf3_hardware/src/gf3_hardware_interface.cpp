@@ -21,60 +21,34 @@ namespace gf3_hardware
     {
       return CallbackReturn::ERROR;
     }
-    string dev_name("/dev/ttyACM0");
-    int moteus_id = 1;
-
-    MOTEUS_ = std::make_shared<MoteusAPI>(dev_name, moteus_id);
-    // MoteusAPI api(dev_name, moteus_id);
-
-    // CAN_ = std::make_shared<CanBridge>();
-
+   
     hw_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
     prev_hw_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
     hw_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
 
-    // set motor-zero position offset from yaml
-
-    for (const hardware_interface::ComponentInfo &joint : info_.joints)
+    const auto get_hardware_parameter = [this](const std::string& parameter_name, const std::string& default_value) {
+    if (auto it = info_.hardware_parameters.find(parameter_name); it != info_.hardware_parameters.end())
     {
-      if (joint.command_interfaces.size() != 1)
-      {
-        RCLCPP_FATAL(
-            rclcpp::get_logger("Gf3HardwareInterface"),
-            "Joint '%s' has %zu command interfaces found. 1 expected.", joint.name.c_str(),
-            joint.command_interfaces.size());
-        return CallbackReturn::ERROR;
-      }
-
-      if (joint.command_interfaces[0].name != hardware_interface::HW_IF_POSITION)
-      {
-        RCLCPP_FATAL(
-            rclcpp::get_logger("Gf3HardwareInterface"),
-            "Joint '%s' have %s command interfaces found. '%s' expected.", joint.name.c_str(),
-            joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION);
-        return CallbackReturn::ERROR;
-      }
-
-      if (joint.state_interfaces.size() != 1)
-      {
-        RCLCPP_FATAL(
-            rclcpp::get_logger("Gf3HardwareInterface"),
-            "Joint '%s' has %zu state interface. 1 expected.", joint.name.c_str(),
-            joint.state_interfaces.size());
-        return CallbackReturn::ERROR;
-      }
-
-      if (joint.state_interfaces[0].name != hardware_interface::HW_IF_POSITION)
-      {
-        RCLCPP_FATAL(
-            rclcpp::get_logger("Gf3HardwareInterface"),
-            "Joint '%s' have %s state interface. '%s' expected.", joint.name.c_str(),
-            joint.state_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION);
-        return CallbackReturn::ERROR;
-      }
+      return it->second;
     }
+    return default_value;
+  };
+  
+    // Add random ID to prevent warnings about multiple publishers within the same node
+  rclcpp::NodeOptions options;
+  options.arguments({ "--ros-args", "-r", "__node:=topic_based_ros2_control_" + info_.name });
 
-    return CallbackReturn::SUCCESS;
+  node_ = rclcpp::Node::make_shared("_", options);
+
+  // TODO: specify Moteus msg type
+  topic_based_joint_commands_publisher_ = node_->create_publisher<sensor_msgs::msg::JointState>(
+      get_hardware_parameter("joint_commands_topic", "/robot_joint_commands"), rclcpp::QoS(1));
+  topic_based_joint_states_subscriber_ = node_->create_subscription<sensor_msgs::msg::JointState>(
+      get_hardware_parameter("joint_states_topic", "/robot_joint_states"), rclcpp::SensorDataQoS(),
+      [this](const sensor_msgs::msg::JointState::SharedPtr joint_state)
+      { latest_joint_state_ = *joint_state; });
+
+  return CallbackReturn::SUCCESS;
   }
 
   CallbackReturn Gf3HardwareInterface::on_configure(
@@ -135,27 +109,7 @@ namespace gf3_hardware
 
   hardware_interface::return_type Gf3HardwareInterface::read(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
-    State curr_state;
-
-    // only read current position
-    MOTEUS_->ReadState(curr_state.EN_Position());
-    cout << "position: " << curr_state.position << endl;
-
-    // reset the state and only read velocity and torque
-    // curr_state.Reset();
-    // MOTEUS_->ReadState(curr_state.EN_Velocity().EN_Torque());
-
-    // // read temperature in addition to velocity and torque
-    // MOTEUS_->ReadState(curr_state.EN_Temp());
-
-    // print everyting
-    // cout << "velocity: " << curr_state.velocity << endl;
-    // cout << "torque: " << curr_state.torque << endl;
-    // cout << "temperature: " << curr_state.temperature << endl;
-    for (uint i = 0; i < hw_states_.size(); i++)
-    {
-      hw_states_[i] = curr_state.position;
-    }
+    // read the state from the hardware
     // RCLCPP_INFO(rclcpp::get_logger("Gf3HardwareInterface"), "read!");
 
     return hardware_interface::return_type::OK;
@@ -163,13 +117,12 @@ namespace gf3_hardware
 
   hardware_interface::return_type Gf3HardwareInterface::write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
+    // TODO: topic publisher, MoteusCommandArray
     // send one position with speed and torque limits
     double stop_position = 0;
     double velocity = 0.05;
     double max_torque = 1;
     double feedforward_torque = 0;
-    MOTEUS_->SendPositionCommand(stop_position, velocity, max_torque,
-                                 feedforward_torque);
     return hardware_interface::return_type::OK;
   }
 
