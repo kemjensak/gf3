@@ -55,10 +55,10 @@ namespace gf3_hardware
     hardware_interface::return_type write(const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
   private:
-    rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr topic_based_joint_states_subscriber_;
-    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr topic_based_joint_commands_publisher_;
+    rclcpp::Subscription<moteus_msgs::msg::MoteusStateArray>::SharedPtr topic_based_joint_states_subscriber_;
+    rclcpp::Publisher<moteus_msgs::msg::MoteusCommandArray>::SharedPtr topic_based_joint_commands_publisher_;
     rclcpp::Node::SharedPtr node_;
-    sensor_msgs::msg::JointState latest_joint_state_;
+    moteus_msgs::msg::MoteusStateArray latest_moteus_state_array_;
 
     double hw_start_sec_;
     double hw_stop_sec_;
@@ -66,9 +66,6 @@ namespace gf3_hardware
     std::vector<double> hw_commands_;
     std::vector<double> hw_states_, prev_hw_states_;
     
-    // std::shared_ptr<CanBridge> CAN_;
-    // std::shared_ptr<Myactuator> ARM_;
-
     const uint32_t motor_ID[4] ={0x141U, 0x142U, 0x143U, 0x144U};
   };
 }

@@ -13,7 +13,6 @@
 
 namespace gf3_hardware
 {
-
   CallbackReturn Gf3HardwareInterface::on_init(
       const hardware_interface::HardwareInfo &info)
   {
@@ -21,34 +20,35 @@ namespace gf3_hardware
     {
       return CallbackReturn::ERROR;
     }
-   
+
     hw_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
     prev_hw_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
     hw_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
 
-    const auto get_hardware_parameter = [this](const std::string& parameter_name, const std::string& default_value) {
-    if (auto it = info_.hardware_parameters.find(parameter_name); it != info_.hardware_parameters.end())
+    const auto get_hardware_parameter = [this](const std::string &parameter_name, const std::string &default_value)
     {
-      return it->second;
-    }
-    return default_value;
-  };
-  
+      if (auto it = info_.hardware_parameters.find(parameter_name); it != info_.hardware_parameters.end())
+      {
+        return it->second;
+      }
+      return default_value;
+    };
+
     // Add random ID to prevent warnings about multiple publishers within the same node
-  rclcpp::NodeOptions options;
-  options.arguments({ "--ros-args", "-r", "__node:=topic_based_ros2_control_" + info_.name });
+    rclcpp::NodeOptions options;
+    options.arguments({"--ros-args", "-r", "__node:=topic_based_ros2_control_" + info_.name});
 
-  node_ = rclcpp::Node::make_shared("_", options);
+    node_ = rclcpp::Node::make_shared("_", options);
 
-  // TODO: specify Moteus msg type
-  topic_based_joint_commands_publisher_ = node_->create_publisher<sensor_msgs::msg::JointState>(
-      get_hardware_parameter("joint_commands_topic", "/robot_joint_commands"), rclcpp::QoS(1));
-  topic_based_joint_states_subscriber_ = node_->create_subscription<sensor_msgs::msg::JointState>(
-      get_hardware_parameter("joint_states_topic", "/robot_joint_states"), rclcpp::SensorDataQoS(),
-      [this](const sensor_msgs::msg::JointState::SharedPtr joint_state)
-      { latest_joint_state_ = *joint_state; });
+    // TODO: specify Moteus msg type
+    topic_based_joint_commands_publisher_ = node_->create_publisher<moteus_msgs::msg::MoteusCommandArray>(
+        get_hardware_parameter("joint_commands_topic", "/command"), rclcpp::QoS(1));
+    topic_based_joint_states_subscriber_ = node_->create_subscription<moteus_msgs::msg::MoteusStateArray>(
+        get_hardware_parameter("joint_states_topic", "/state"), rclcpp::SensorDataQoS(),
+        [this](const moteus_msgs::msg::MoteusStateArray::SharedPtr joint_state)
+        { latest_moteus_state_array_ = *joint_state; });
 
-  return CallbackReturn::SUCCESS;
+    return CallbackReturn::SUCCESS;
   }
 
   CallbackReturn Gf3HardwareInterface::on_configure(
@@ -103,7 +103,6 @@ namespace gf3_hardware
   CallbackReturn Gf3HardwareInterface::on_deactivate(
       const rclcpp_lifecycle::State & /*previous_state*/)
   {
-
     return CallbackReturn::SUCCESS;
   }
 
@@ -111,18 +110,53 @@ namespace gf3_hardware
   {
     // read the state from the hardware
     // RCLCPP_INFO(rclcpp::get_logger("Gf3HardwareInterface"), "read!");
+    rclcpp::spin_some(node_);
+    if (info_.joints.size() != latest_moteus_state_array_.moteus_states.size())
+    {
+      // RCLCPP_WARN(rclcpp::get_logger("Gf3HardwareInterface"),
+      //             "Number of joints in URDF (%d) and number of joints in MoteusStateArray (%d) are not equal!",
+      //             info_.joints.size(),
+      //             latest_moteus_state_array_.moteus_states.size());
+      // latest_moteus_state_array_.moteus_states.resize(info_.joints.size());
+    }
 
-    return hardware_interface::return_type::OK;
+    for (std::size_t i = 0; i < info_.joints.size(); i++)
+    {
+      for (const auto &moteus_state : latest_moteus_state_array_.moteus_states)
+        {
+            if (moteus_state.id == (i + 1) )
+            {
+                hw_states_[i] = moteus_state.position;
+            }
+        }
+
+    }
+    
+
+        return hardware_interface::return_type::OK;
   }
 
   hardware_interface::return_type Gf3HardwareInterface::write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
     // TODO: topic publisher, MoteusCommandArray
+    // rclcpp::spin_some(node_);
+    moteus_msgs::msg::MoteusCommandArray command_array;
+    moteus_msgs::msg::MoteusCommand command;
+    // command.id = 1;
+    // command.position = 1;
+    command.velocity = 0.1;
+    // command.feedforward_torque = 0;
+    command.maximum_torque = 4.0;
+    for (std::size_t i = 0; i < info_.joints.size(); i++)
+    {
+      command.id = i + 1;
+      command.position = hw_commands_[i];
+      // RCLCPP_INFO(rclcpp::get_logger("Gf3HardwareInterface"), "write! %f", hw_commands_[i]);
+      command_array.moteus_commands.push_back(command);
+    }
+     
     // send one position with speed and torque limits
-    double stop_position = 0;
-    double velocity = 0.05;
-    double max_torque = 1;
-    double feedforward_torque = 0;
+    topic_based_joint_commands_publisher_->publish(command_array);
     return hardware_interface::return_type::OK;
   }
 
